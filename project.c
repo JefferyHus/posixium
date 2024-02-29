@@ -3,11 +3,29 @@
 #include <stdlib.h>
 #include <string.h>
 #include <Windows.h>
+#include <sys/stat.h>
 
 // define the size of arguments, command
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARGS 32
 #define MAX_ARG_SIZE 64
+
+char *sanitize_string(const char *str) {
+  const char* whitelist = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
+  char* output = malloc(strlen(str) + 1);
+  char* pointer = output;
+
+  for (const char *c = str; *c != '\0'; c++) {
+    if (strchr(whitelist, *c) != NULL) {
+      *pointer = *c;
+      pointer++;
+    }
+  }
+
+  *pointer = '\0';
+
+  return output;
+}
 
 // command functions
 void _touch(char* args);
@@ -30,11 +48,50 @@ typedef struct {
 
 // command functions implementation
 void _touch(char* args) {
+  HANDLE file;
+  SYSTEMTIME sysTime;
+  FILETIME fileTime;
+
   char* filename = strtok(args, " ");
   char* option = strtok(NULL, " ");
   char* value = strtok(NULL, " ");
 
-  printf("filename %s, the option %s, and the value %s", filename, option, value);
+  // sanitize the filename, option and value
+  filename = sanitize_string(filename);
+  option = sanitize_string(option);
+  value = sanitize_string(value);
+
+  // create the file
+  struct _stat fileinfo;
+  DWORD disposition = CREATE_NEW;
+
+  if (_stat(filename, &fileinfo) == 0) {
+    disposition = OPEN_EXISTING;
+  }
+
+  file = CreateFile(filename, GENERIC_WRITE, 0, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (file == INVALID_HANDLE_VALUE) {
+      fprintf(stderr, "Error: Unable to create file %s\n", filename);
+      return;
+  }
+
+  if (option != NULL && strcmp(option, "--content") == 0) {
+    DWORD bytesWritten;
+    if (disposition == OPEN_EXISTING) {
+      SetFilePointer(file, 0, NULL, FILE_END);
+    }
+    if (!WriteFile(file, value, strlen(value), &bytesWritten, NULL)) {
+      fprintf(stderr, "Error: Unable to write to file %s\n", filename);
+      return;
+    }
+    WriteFile(file, "\n", 1, &bytesWritten, NULL);
+  }
+
+  GetSystemTime(&sysTime);
+  SystemTimeToFileTime(&sysTime, &fileTime);
+  SetFileTime(file, &fileTime, &fileTime, &fileTime);
+
+  CloseHandle(file);
 }
 
 // list of commands
