@@ -11,6 +11,10 @@
 #define MAX_ARG_SIZE 64
 
 char *sanitize_string(const char *str) {
+  if (str == NULL) {
+    return NULL;
+  }
+
   const char* whitelist = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
   char* output = malloc(strlen(str) + 1);
   char* pointer = output;
@@ -57,31 +61,38 @@ void _touch(char* args) {
   char* value = strtok(NULL, " ");
 
   // sanitize the filename, option and value
-  filename = sanitize_string(filename);
-  option = sanitize_string(option);
-  value = sanitize_string(value);
+  char* sanitized_filename = sanitize_string(filename);
+  char* sanitized_option = sanitize_string(option);
+  char* sanitized_value = sanitize_string(value);
 
   // create the file
   struct _stat fileinfo;
   DWORD disposition = CREATE_NEW;
 
-  if (_stat(filename, &fileinfo) == 0) {
+  if (_stat(sanitized_filename, &fileinfo) == 0) {
     disposition = OPEN_EXISTING;
   }
 
-  file = CreateFile(filename, GENERIC_WRITE, 0, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
+  file = CreateFile(sanitized_filename, GENERIC_WRITE, 0, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
   if (file == INVALID_HANDLE_VALUE) {
-      fprintf(stderr, "Error: Unable to create file %s\n", filename);
+      fprintf(stderr, "Error: Unable to create file %s\n", sanitized_filename);
+      free(sanitized_filename);
+      free(sanitized_option);
+      free(sanitized_value);
       return;
   }
 
-  if (option != NULL && strcmp(option, "--content") == 0) {
+  if (sanitized_option != NULL && strcmp(sanitized_option, "--content") == 0 && sanitized_value != NULL) {
     DWORD bytesWritten;
     if (disposition == OPEN_EXISTING) {
       SetFilePointer(file, 0, NULL, FILE_END);
     }
-    if (!WriteFile(file, value, strlen(value), &bytesWritten, NULL)) {
-      fprintf(stderr, "Error: Unable to write to file %s\n", filename);
+    if (!WriteFile(file, sanitized_value, strlen(sanitized_value), &bytesWritten, NULL)) {
+      fprintf(stderr, "Error: Unable to write to file %s\n", sanitized_filename);
+      free(sanitized_filename);
+      free(sanitized_option);
+      free(sanitized_value);
+      CloseHandle(file);
       return;
     }
     WriteFile(file, "\n", 1, &bytesWritten, NULL);
@@ -92,6 +103,10 @@ void _touch(char* args) {
   SetFileTime(file, &fileTime, &fileTime, &fileTime);
 
   CloseHandle(file);
+
+  free(sanitized_filename);
+  free(sanitized_option);
+  free(sanitized_value);
 }
 
 // list of commands
